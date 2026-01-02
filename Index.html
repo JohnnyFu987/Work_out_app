@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitTrack | 我的健身軌跡</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f1f5f9; }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); }
+        .tab-active { color: #2563eb; border-bottom: 3px solid #2563eb; }
+        .input-focus { outline: none; transition: all 0.2s; }
+        .input-focus:focus { ring: 2px; ring-color: #3b82f6; border-color: #3b82f6; }
+        .status-pill { transition: all 0.3s ease; }
+    </style>
+</head>
+<body class="pb-10">
+
+    <!-- 頂部導覽 -->
+    <nav class="sticky top-0 z-50 glass border-b border-slate-200 px-4 py-4 flex justify-between items-center shadow-sm">
+        <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <i data-lucide="activity" class="text-blue-600"></i> FitTrack
+        </h1>
+        <div id="connection-status" class="hidden px-3 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-600 status-pill">
+            離線模式 (預覽)
+        </div>
+        <div class="flex gap-6">
+            <button onclick="switchTab('dashboard')" id="btn-dashboard" class="tab-active font-bold text-sm">儀表板</button>
+            <button onclick="switchTab('workout')" id="btn-workout" class="text-slate-500 font-bold text-sm">記錄訓練</button>
+            <button onclick="switchTab('stats')" id="btn-stats" class="text-slate-500 font-bold text-sm">體測紀錄</button>
+        </div>
+    </nav>
+
+    <main class="max-w-2xl mx-auto p-4 space-y-6">
+
+        <!-- 1. 儀表板 -->
+        <section id="tab-dashboard" class="space-y-6">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                    <p class="text-slate-400 text-xs mb-1">體重 / 身高</p>
+                    <p class="text-xl font-bold text-slate-800"><span id="disp-weight">--</span>kg / <span id="disp-height">--</span>cm</p>
+                </div>
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
+                    <p class="text-slate-400 text-xs mb-1">體脂率 / BMI</p>
+                    <p class="text-xl font-bold text-blue-600"><span id="disp-fat">--</span>% / <span id="disp-bmi">--</span></p>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-3xl shadow-md border border-slate-100">
+                <h3 class="font-bold text-slate-700 mb-6 flex items-center gap-2">
+                    <i data-lucide="line-chart" class="w-5 h-5 text-blue-500"></i> 成長趨勢曲線
+                </h3>
+                <div class="h-64">
+                    <canvas id="growthChart"></canvas>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <h3 class="font-bold text-slate-700">最近動作紀錄</h3>
+                <div id="recent-logs" class="space-y-3">
+                    <p class="text-slate-400 italic text-center py-10">資料載入中...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. 訓練記錄 -->
+        <section id="tab-workout" class="hidden space-y-4">
+            <div class="bg-white p-6 rounded-3xl shadow-md border border-slate-100">
+                <h2 class="text-lg font-bold mb-6 text-slate-800">新增訓練數據</h2>
+                
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 mb-2">訓練日期</label>
+                        <input type="date" id="workout-date" class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 mb-2">訓練部位</label>
+                        <select id="workout-day" onchange="updateExerciseList()" class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus">
+                            <option value="">請選擇訓練課表...</option>
+                            <option value="day1">Day 1: 胸部 + 三頭肌</option>
+                            <option value="day2">Day 2: 背部 + 二頭肌</option>
+                            <option value="day3">Day 3: 肩部 + 腿部</option>
+                        </select>
+                    </div>
+
+                    <div id="workout-fields" class="hidden space-y-5">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-600 mb-2">選擇動作</label>
+                            <select id="exercise-name" class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus"></select>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-bold text-slate-600 mb-2">組數 (Sets)</label>
+                                <input type="number" id="sets" placeholder="4" class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-slate-600 mb-2">重量 (kg)</label>
+                                <input type="number" id="max-weight" placeholder="60" class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-bold text-slate-600 mb-2">訓練備註</label>
+                            <textarea id="notes" placeholder="備註狀況..." class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus h-24"></textarea>
+                        </div>
+
+                        <button onclick="saveEntry('workout')" class="w-full bg-blue-600 text-white font-bold py-5 rounded-2xl shadow-lg hover:bg-blue-700 active:scale-95 transition-all">
+                            儲存紀錄
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. 更新體測 -->
+        <section id="tab-stats" class="hidden space-y-4">
+            <div class="bg-white p-6 rounded-3xl shadow-md border border-slate-100">
+                <h2 class="text-lg font-bold mb-6 text-slate-800">更新身體數據</h2>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 mb-2">量測日期</label>
+                        <input type="date" id="stat-date" class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-600 mb-2">身高 (cm)</label>
+                            <input type="number" step="0.1" id="stat-height" value="175" class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-600 mb-2">體重 (kg)</label>
+                            <input type="number" step="0.1" id="stat-weight" class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-600 mb-2">體脂 (%)</label>
+                        <input type="number" step="0.1" id="stat-fat" class="w-full p-4 rounded-2xl border border-slate-200 bg-slate-50 input-focus">
+                    </div>
+                    <button onclick="saveEntry('stats')" class="w-full bg-slate-800 text-white font-bold py-5 rounded-2xl shadow-lg hover:bg-slate-900 active:scale-95 transition-all">
+                        更新體測
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 載入中遮罩 -->
+    <div id="loading" class="fixed inset-0 bg-white/70 flex items-center justify-center hidden z-[100] backdrop-blur-sm">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl text-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-600 border-r-transparent mx-auto mb-4"></div>
+            <p id="loading-text" class="text-slate-600 font-bold">同步資料中...</p>
+        </div>
+    </div>
+
+    <script>
+        // 設定你的 GAS URL
+        const API_URL = "https://script.google.com/macros/s/AKfycbzE7V0nHnVR4Xg1K4Mles_95XtqIByNGjH-z15WVYan1LwOGmrPA7CeLOym8DJwNNJl/exec";
+
+        const splitProgram = {
+            day1: ["夾胸", "推胸", "下胸推器械", "三頭下拉"],
+            day2: ["器械輔助引體向上", "下拉", "划船", "二頭彎舉"],
+            day3: ["肩推", "蝴蝶機後束", "啞鈴飛鳥", "深蹲", "腿踢機"]
+        };
+
+        let myChart = null;
+        let isDemoMode = false;
+
+        window.onload = () => {
+            lucide.createIcons();
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('workout-date').value = today;
+            document.getElementById('stat-date').value = today;
+            loadData();
+        };
+
+        function switchTab(tabId) {
+            ['dashboard', 'workout', 'stats'].forEach(id => {
+                document.getElementById(`tab-${id}`).classList.add('hidden');
+                document.getElementById(`btn-${id}`).className = 'text-slate-500 font-bold text-sm';
+            });
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            document.getElementById(`btn-${tabId}`).className = 'tab-active font-bold text-sm';
+            if (tabId === 'dashboard') loadData();
+        }
+
+        function updateExerciseList() {
+            const day = document.getElementById('workout-day').value;
+            const fields = document.getElementById('workout-fields');
+            const select = document.getElementById('exercise-name');
+            if (!day) { fields.classList.add('hidden'); return; }
+            fields.classList.remove('hidden');
+            select.innerHTML = splitProgram[day].map(ex => `<option value="${ex}">${ex}</option>`).join('');
+        }
+
+        async function loadData() {
+            try {
+                // 優先使用 GAS 內建環境，若失敗則使用 fetch
+                if (typeof google !== 'undefined' && google.script && google.script.run) {
+                    google.script.run.withSuccessHandler(renderDashboard).getData();
+                } else {
+                    // 使用 fetch 並設定逾時處理
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8秒逾時
+
+                    const response = await fetch(`${API_URL}?action=getData`, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    
+                    const data = await response.json();
+                    setConnectionStatus(true);
+                    renderDashboard(data);
+                }
+            } catch (err) {
+                console.warn("API 載入失敗，切換至模擬數據模式:", err);
+                setConnectionStatus(false);
+                // 模擬數據供預覽使用
+                renderDashboard({
+                    stats: [
+                        { date: '2025-12-01', weight: 80, fat: 22, height: 175, bmi: 26.1 },
+                        { date: '2025-12-15', weight: 78, fat: 21, height: 175, bmi: 25.5 },
+                        { date: '2026-01-01', weight: 77, fat: 19, height: 175, bmi: 25.1 }
+                    ],
+                    logs: [
+                        { date: '2026-01-01', name: '推胸', sets: 4, weight: 60 },
+                        { date: '2026-01-01', name: '深蹲', sets: 5, weight: 80 }
+                    ]
+                });
+            }
+        }
+
+        function setConnectionStatus(isConnected) {
+            const pill = document.getElementById('connection-status');
+            pill.classList.remove('hidden');
+            if (isConnected) {
+                pill.innerText = "已連線至雲端";
+                pill.className = "px-3 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-600 status-pill";
+            } else {
+                pill.innerText = "預覽模式 (無連線)";
+                pill.className = "px-3 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-600 status-pill";
+                isDemoMode = true;
+            }
+        }
+
+        function renderDashboard(data) {
+            if (!data.stats || data.stats.length === 0) return;
+
+            const latest = data.stats[data.stats.length - 1];
+            document.getElementById('disp-height').innerText = latest.height || '--';
+            document.getElementById('disp-weight').innerText = latest.weight || '--';
+            document.getElementById('disp-fat').innerText = latest.fat || '--';
+            document.getElementById('disp-bmi').innerText = latest.bmi || '--';
+
+            const logContainer = document.getElementById('recent-logs');
+            if (data.logs && data.logs.length > 0) {
+                logContainer.innerHTML = data.logs.slice(-5).reverse().map(l => `
+                    <div class="bg-white p-5 rounded-3xl flex justify-between items-center shadow-sm border border-slate-100">
+                        <div>
+                            <p class="font-bold text-slate-800">${l.name}</p>
+                            <p class="text-[10px] text-slate-400">${new Date(l.date).toLocaleDateString('zh-TW')}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-blue-600 font-bold">${l.weight} kg</p>
+                            <p class="text-[10px] text-slate-500">${l.sets} 組</p>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                logContainer.innerHTML = '<p class="text-slate-400 italic text-center py-10">尚無動作紀錄</p>';
+            }
+
+            const ctx = document.getElementById('growthChart').getContext('2d');
+            if (myChart) myChart.destroy();
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.stats.map(s => new Date(s.date).toLocaleDateString('zh-TW')),
+                    datasets: [
+                        { label: '體重(kg)', data: data.stats.map(s => s.weight), borderColor: '#3b82f6', tension: 0.4, fill: false },
+                        { label: '體脂(%)', data: data.stats.map(s => s.fat), borderColor: '#ef4444', borderDash: [5, 5], tension: 0.4, fill: false }
+                    ]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        async function saveEntry(type) {
+            if (isDemoMode) {
+                alert('目前處於預覽模式，資料將不會存入 Google 試算表。請確認您的 GAS 腳本已正確部署為「所有人」存取。');
+                switchTab('dashboard');
+                return;
+            }
+
+            const loading = document.getElementById('loading');
+            loading.classList.remove('hidden');
+
+            let payload = { action: 'saveEntry', type: type };
+            if (type === 'workout') {
+                payload = { 
+                    ...payload,
+                    date: document.getElementById('workout-date').value,
+                    day: document.getElementById('workout-day').options[document.getElementById('workout-day').selectedIndex].text,
+                    name: document.getElementById('exercise-name').value,
+                    sets: document.getElementById('sets').value,
+                    weight: document.getElementById('max-weight').value,
+                    notes: document.getElementById('notes').value
+                };
+            } else {
+                const h = parseFloat(document.getElementById('stat-height').value);
+                const w = parseFloat(document.getElementById('stat-weight').value);
+                payload = {
+                    ...payload,
+                    date: document.getElementById('stat-date').value,
+                    height: h,
+                    weight: w,
+                    fat: document.getElementById('stat-fat').value,
+                    bmi: (w / ((h / 100) ** 2)).toFixed(1)
+                };
+            }
+
+            try {
+                if (typeof google !== 'undefined' && google.script && google.script.run) {
+                    google.script.run.withSuccessHandler(() => {
+                        loading.classList.add('hidden');
+                        switchTab('dashboard');
+                    }).saveEntry(payload);
+                } else {
+                    await fetch(API_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    setTimeout(() => {
+                        loading.classList.add('hidden');
+                        switchTab('dashboard');
+                    }, 1500);
+                }
+            } catch (err) {
+                loading.classList.add('hidden');
+                alert('儲存失敗：' + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
